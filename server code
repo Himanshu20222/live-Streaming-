@@ -1,0 +1,66 @@
+##server code for live streaming from a USB camera to a client using Python and OpenCV. This example focuses on the server-side streaming functionality.##
+import socket
+import cv2
+import pickle
+import struct
+
+def open_camera():
+    for index in range(10):
+        try:
+            vid = cv2.VideoCapture(index)
+            vid.read()
+            return vid
+        except cv2.error as e:
+            print(f"Error opening camera index {index}: {e}")
+    return None
+
+# Create socket
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+host_name = socket.gethostname()
+host_ip = socket.gethostbyname(host_name)
+print('Host IP:', host_ip)
+port = 9999
+socket_address = (host_ip, port)
+
+# Bind socket
+server_socket.bind(('0.0.0.0', port))
+
+# Listen for connections
+server_socket.listen(5)
+print("LISTENING AT:", socket_address)
+
+# Accept connections
+while True:
+    client_socket, addr = server_socket.accept()
+    print('GOT CONNECTION FROM:', addr)
+    
+    if client_socket:
+        # Attempt to open the camera
+        vid = open_camera()
+        if vid is None:
+            print("Error: Unable to open the camera.")
+            break
+
+        try:
+            while vid.isOpened():
+                ret, frame = vid.read()
+                if not ret:
+                    print("Error reading frame")
+                    break
+
+                # Serialize frame
+                data = pickle.dumps(frame)
+                message_size = struct.pack("Q", len(data)) + data
+
+                # Send frame size and frame data
+                client_socket.sendall(message_size)
+
+                cv2.imshow('TRANSMITTING VIDEO', frame)
+                key = cv2.waitKey(1) & 0xFF
+
+                if key == ord('q'):
+                    break
+        finally:
+            vid.release()
+            cv2.destroyAllWindows()
+            client_socket.close()
